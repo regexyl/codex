@@ -8,7 +8,6 @@ import { AppServerOptions } from "./appServerOptions";
 import {
   AppServerNotification,
   AppServerServerRequestHandlers,
-  ChatgptAuthTokensRefreshResponse,
   CommandExecutionRequestApprovalResponse,
   DynamicToolCallResponse,
   InitializeParams,
