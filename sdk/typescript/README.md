@@ -31,6 +31,159 @@ Call `run()` repeatedly on the same `Thread` instance to continue that conversat
 const nextTurn = await thread.run("Implement the fix");
 ```
 
+## Choose your API
+
+The SDK now exposes two complementary APIs:
+
+1. `Codex` / `Thread` (high-level): best for straightforward prompt/turn workflows.
+2. `CodexEffect` (low-level control plane): best for full action coverage, orchestration, and Effect-based runtime composition.
+
+Use `CodexEffect` when you need to call the full `codex app-server` JSON-RPC surface (threads, turns, review, account, config, MCP status, etc.) or when you want to invoke arbitrary CLI subcommands programmatically.
+
+## ChatGPT subscription flow
+
+If your goal is to use your ChatGPT subscription (instead of API-key billing), authenticate once with:
+
+```bash
+codex login
+```
+
+After that, `CodexEffect.appServer` calls can use your existing session.
+
+## CodexEffect quickstart (no MCP)
+
+```typescript
+import { Effect, Stream } from "effect";
+import { CodexEffect } from "@openai/codex-sdk";
+
+const program = Effect.scoped(
+  Effect.gen(function* () {
+    const client = yield* CodexEffect.appServer.scoped({
+      initialize: {
+        clientInfo: {
+          name: "my_orchestrator",
+          title: "My Orchestrator",
+          version: "0.1.0",
+        },
+      },
+    });
+
+    const start = yield* CodexEffect.appServer.call<{ thread: { id: string } }>(
+      client,
+      "thread/start",
+      {
+        model: "gpt-5.1-codex",
+        approvalPolicy: "never",
+        sandbox: "workspaceWrite",
+        cwd: process.cwd(),
+      },
+    );
+
+    const turn = yield* CodexEffect.appServer.call<{ turn: { id: string } }>(
+      client,
+      "turn/start",
+      {
+        threadId: start.thread.id,
+        input: [
+          {
+            type: "text",
+            text: "Summarize this repository and propose three improvements.",
+            text_elements: [],
+          },
+        ],
+      },
+    );
+
+    yield* Stream.runForEach(
+      CodexEffect.appServer.notifications(client).pipe(Stream.take(40)),
+      (event) =>
+        Effect.sync(() => {
+          if (event.method === "item/agentMessage/delta") {
+            const delta = (event.params as { delta?: string } | undefined)?.delta;
+            if (delta) process.stdout.write(delta);
+          }
+          if (
+            event.method === "turn/completed" &&
+            (event.params as { turn?: { id?: string } } | undefined)?.turn?.id === turn.turn.id
+          ) {
+            process.stdout.write("\n");
+          }
+        }),
+    );
+  }),
+);
+
+await Effect.runPromise(program);
+```
+
+## CodexEffect quickstart (with MCP)
+
+```typescript
+import { Effect } from "effect";
+import { CodexEffect } from "@openai/codex-sdk";
+
+const program = Effect.scoped(
+  Effect.gen(function* () {
+    const appServer = yield* CodexEffect.appServer.scoped();
+    const cli = yield* CodexEffect.cli.scoped();
+
+    // Example: inspect configured MCP servers via CLI.
+    const list = yield* CodexEffect.cli.run(cli, {
+      args: ["mcp", "list", "--json"],
+      throwOnNonZero: true,
+    });
+    console.log(list.stdout);
+
+    // If you changed MCP config through CLI, reload app-server view.
+    yield* CodexEffect.appServer.call(appServer, "config/mcpServer/reload");
+
+    const statuses = yield* CodexEffect.appServer.call<{
+      data: Array<{ name: string; authStatus: string }>;
+      nextCursor: string | null;
+    }>(appServer, "mcpServerStatus/list", { cursor: null, limit: 100 });
+
+    console.log(statuses.data.map((x) => `${x.name}:${x.authStatus}`));
+  }),
+);
+
+await Effect.runPromise(program);
+```
+
+## Run any CLI action programmatically
+
+`CodexEffect.cli` is a generic subprocess wrapper over `codex` itself, so you can call non-app-server subcommands too:
+
+```typescript
+import { Effect } from "effect";
+import { CodexEffect } from "@openai/codex-sdk";
+
+const output = await Effect.runPromise(
+  Effect.scoped(
+    Effect.gen(function* () {
+      const cli = yield* CodexEffect.cli.scoped();
+      return yield* CodexEffect.cli.run(cli, {
+        args: ["features", "list"],
+        throwOnNonZero: true,
+      });
+    }),
+  ),
+);
+
+console.log(output.stdout);
+```
+
+## Orchestration patterns
+
+For agent-team style orchestration, design your runtime around:
+
+1. A host-side scheduler (DAG/task graph), not only prompt-driven delegation.
+2. Profile-driven sub-agent defaults (`pm`, `engineer`, `designer`, `qa`) mapped to model/reasoning/sandbox policy.
+3. Typed inter-agent messages (`task`, `question`, `artifact`, `status`) routed through a central orchestrator bus.
+4. Adaptive concurrency (respect `agents.max_threads`, rate limits, and critical path).
+5. Event-driven waiting via streams/notifications (avoid busy polling loops).
+
+`CodexEffect.appServer` gives you the control plane APIs; `CodexEffect.cli` lets you still invoke CLI-only surfaces when needed.
+
 ### Streaming responses
 
 `run()` buffers events until the turn finishes. To react to intermediate progress—tool calls, streaming responses, and file change notifications—use `runStreamed()` instead, which returns an async generator of structured events.

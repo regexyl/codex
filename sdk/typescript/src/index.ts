@@ -38,3 +38,39 @@ export type {
   WebSearchMode,
 } from "./threadOptions";
 export type { TurnOptions } from "./turnOptions";
+
+export { AppServerClient } from "./appServerClient";
+export type { AppServerOptions } from "./appServerOptions";
+export type {
+  AppServerClientMethod,
+  AppServerNotification,
+  AppServerServerRequestHandlers,
+  ChatgptAuthTokensRefreshParams,
+  ChatgptAuthTokensRefreshResponse,
+  CommandExecutionRequestApprovalParams,
+  CommandExecutionRequestApprovalResponse,
+  DynamicToolCallParams,
+  DynamicToolCallResponse,
+  FileChangeRequestApprovalParams,
+  FileChangeRequestApprovalResponse,
+  InitializeParams,
+  InitializeResponse,
+  JsonRpcError,
+  JsonRpcErrorPayload,
+  JsonRpcId,
+  JsonRpcMessage,
+  JsonRpcNotification,
+  JsonRpcRequest,
+  JsonRpcResponse,
+  ToolRequestUserInputParams,
+  ToolRequestUserInputResponse,
+} from "./appServerTypes";
+
+export { CliActionRunner } from "./cliActionRunner";
+export type {
+  CliActionResult,
+  CliActionRunnerOptions,
+  RunCliActionOptions,
+} from "./cliActionRunner";
+
+export { CodexEffect } from "./effectClient";
